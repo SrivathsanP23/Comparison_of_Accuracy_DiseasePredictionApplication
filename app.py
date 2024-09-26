@@ -4,6 +4,8 @@ import streamlit as st
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 import pandas as pd
+from imblearn.over_sampling import SMOTE
+from sklearn.metrics import r2_score
 
 # Set page configuration
 st.set_page_config(page_title="Health Assistant", layout="wide", page_icon="🧑‍⚕️")
@@ -14,7 +16,7 @@ working_dir = os.path.dirname(os.path.abspath(__file__))
 # Load the models
 svm_model = pickle.load(open(f'{working_dir}/parkinsons_model.sav', 'rb'))
 logistic_model = pickle.load(open(f'{working_dir}/smartdiseaseprediction.sav', 'rb'))
-
+ran_cls = pickle.load(open(f'{working_dir}/randomforestmodel.sav','rb'))
 # Load your dataset
 # Assuming the dataset is in CSV format, replace 'your_dataset.csv' with your actual dataset file
 data_path = f'{working_dir}/parkinsons.csv'
@@ -32,23 +34,36 @@ Y = data[target_column]
 # Split the data into training and testing sets
 X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
+smote = SMOTE(random_state=42)
+
+# Apply SMOTE to the training data
+X_train_smote, Y_train_smote = smote.fit_resample(X_train, Y_train)
+
 # Calculate accuracies for SVM
-svm_train_predictions = svm_model.predict(X_train)
-svm_train_accuracy = accuracy_score(Y_train, svm_train_predictions)
+svm_train_predictions = svm_model.predict(X_train_smote)
+svm_train_accuracy = accuracy_score(Y_train_smote, svm_train_predictions)
 svm_test_predictions = svm_model.predict(X_test)
 svm_test_accuracy = accuracy_score(Y_test, svm_test_predictions)
+svm_r = r2_score(Y_test,svm_test_predictions)
 
 # Calculate accuracies for Logistic Regression
-logistic_train_predictions = logistic_model.predict(X_train)
-logistic_train_accuracy = accuracy_score(Y_train, logistic_train_predictions)
+logistic_train_predictions = logistic_model.predict(X_train_smote)
+logistic_train_accuracy = accuracy_score(Y_train_smote, logistic_train_predictions)
 logistic_test_predictions = logistic_model.predict(X_test)
 logistic_test_accuracy = accuracy_score(Y_test, logistic_test_predictions)
+log_r=r2_score(Y_test,logistic_test_predictions)
+#calculate accuracies for RandomForest Classifier
+randomforest_train_prediction = ran_cls.predict(X_train_smote)
+randomforest_train_accuracy = accuracy_score(Y_train_smote,randomforest_train_prediction)
+randomforest_test_prediction = ran_cls.predict(X_test)
+randomforest_test_accuracy = accuracy_score(Y_test,randomforest_test_prediction)
+ranf_r=r2_score(Y_test,randomforest_test_prediction)
 
 # Page title
 st.title("Smart Disease Prediction System")
 
 # Tab-based navigation
-tab1, tab2 = st.tabs(["SVM Model", "Logistic Regression Model"])
+tab1, tab2 ,tab3= st.tabs(["SVM Model", "Logistic Regression Model","RandomForest Model"])
 
 # Initialize a dictionary to store user inputs
 user_input = {}
@@ -140,10 +155,16 @@ with tab1:
 
         if parkinsons_prediction[0] == 1:
             parkinsons_diagnosis = "The person has Parkinson's disease"
-            st.write(f"Training Accuracy: {svm_train_accuracy * 100:.2f}%")
+            st.write(f"Training Accuracy: {svm_train_accuracy * 100:.3f}%")
+            st.write(f"Testing Accuracy: {svm_test_accuracy * 100:.3f}%")
+            st.write(f"r2 score: {svm_r :.4f}")
+            
         else:
             parkinsons_diagnosis = "The person does not have Parkinson's disease"
-            st.write(f"Training Accuracy: {svm_train_accuracy * 100:.2f}%")
+            st.write(f"Training Accuracy: {svm_train_accuracy * 100:.3f}%")
+            st.write(f"Testing Accuracy: {svm_test_accuracy * 100:.3f}%")
+            st.write(f"r2 score: {svm_r :.4f}")
+            
 
         st.success(parkinsons_diagnosis)
 
@@ -163,11 +184,43 @@ with tab2:
 
         if parkinsons_prediction[0] == 1:
             parkinsons_diagnosis = "The person has Parkinson's disease"
-            st.write(f"Accuracy: {logistic_train_accuracy * 100:.2f}%")
+            st.write(f"Training Accuracy: {logistic_train_accuracy * 100:.3f}%")
+            st.write(f"Testing Accuracy: {logistic_test_accuracy * 100:.3f}%")
+            st.write(f"r2 score: {log_r :.4f}")
 
         else:
             parkinsons_diagnosis = "The person does not have Parkinson's disease"
-            st.write(f"Accuracy: {logistic_train_accuracy * 100:.2f}%")
+            st.write(f"Training Accuracy: {logistic_train_accuracy * 100:.3f}%")
+            st.write(f"Testing Accuracy: {logistic_test_accuracy * 100:.3f}%")
+            st.write(f"r2 score: {log_r :.4f}")
 
 
         st.success(parkinsons_diagnosis)
+with tab3:
+    st.header("RandomForest Model")
+    #st.write(f"Test Accuracy: {logistic_test_accuracy * 100:.2f}%")
+    get_user_inputs(prefix='randomforest')
+
+    # Code for Prediction
+    if st.button("Parkinson's Test Result (Randomforest)"):
+        # Prepare the input for the model
+        input_values = list(user_input.values())
+
+        # Make the prediction
+        parkinsons_prediction = ran_cls.predict([input_values])
+
+        if parkinsons_prediction[0] == 1:
+            parkinsons_diagnosis = "The person has Parkinson's disease"
+            st.write(f"Training Accuracy: {randomforest_train_accuracy * 100:.3f}%")
+            st.write(f"Testing Accuracy: {randomforest_test_accuracy * 100:.3f}%")
+            st.write(f"r2 score: {ranf_r :.4f}")
+            
+        else:
+            parkinsons_diagnosis = "The person does not have Parkinson's disease"
+            st.write(f"Training Accuracy: {randomforest_train_accuracy * 100:.3f}%")
+            st.write(f"Testing Accuracy: {randomforest_test_accuracy * 100:.3f}%")
+            st.write(f"r2 score: {ranf_r :.4f}")
+
+
+        st.success(parkinsons_diagnosis)
+    
