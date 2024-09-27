@@ -19,13 +19,13 @@ st.set_page_config(page_title="Health Assistant", layout="wide", page_icon="🧑
 working_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Load the models
-svm_model = pickle.load(open(f'{working_dir}/parkinsons_model_svm.sav', 'rb'))
-logistic_model = pickle.load(open(f'{working_dir}/smartdiseaseprediction_logreg.sav', 'rb'))
-ran_cls = pickle.load(open(f'{working_dir}/randomforestmodel.sav','rb'))
-ens_cls=pickle.load(open(f'{working_dir}/smartdiseaseprediction_ensemble.sav','rb'))
+svm_model = pickle.load(open('parkinsons_model_svm.sav', 'rb'))
+logistic_model = pickle.load(open('smartdiseaseprediction_logreg.sav', 'rb'))
+ran_cls = pickle.load(open('randomforestmodel.sav','rb'))
+ens_cls=pickle.load(open('smartdiseaseprediction_ensemble.sav','rb'))
 # Load your dataset
 # Assuming the dataset is in CSV format, replace 'your_dataset.csv' with your actual dataset file
-data_path = f'{working_dir}/parkinsons.csv'
+data_path = 'parkinsons.csv'
 data = pd.read_csv(data_path)
 
 # Replace 'feature_columns' with the actual feature columns and 'target_column' with the actual target column
