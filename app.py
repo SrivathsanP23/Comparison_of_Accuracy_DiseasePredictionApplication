@@ -1,5 +1,10 @@
 import os
 import pickle
+import numpy
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 import streamlit as st
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
@@ -14,9 +19,10 @@ st.set_page_config(page_title="Health Assistant", layout="wide", page_icon="🧑
 working_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Load the models
-svm_model = pickle.load(open(f'{working_dir}/parkinsons_model.sav', 'rb'))
-logistic_model = pickle.load(open(f'{working_dir}/smartdiseaseprediction.sav', 'rb'))
+svm_model = pickle.load(open(f'{working_dir}/parkinsons_model_svm.sav', 'rb'))
+logistic_model = pickle.load(open(f'{working_dir}/smartdiseaseprediction_logreg.sav', 'rb'))
 ran_cls = pickle.load(open(f'{working_dir}/randomforestmodel.sav','rb'))
+ens_cls=pickle.load(open(f'{working_dir}/smartdiseaseprediction_ensemble.sav','rb'))
 # Load your dataset
 # Assuming the dataset is in CSV format, replace 'your_dataset.csv' with your actual dataset file
 data_path = f'{working_dir}/parkinsons.csv'
@@ -32,38 +38,59 @@ X = data[feature_columns]
 Y = data[target_column]
 
 # Split the data into training and testing sets
-X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
+# Scale the features using StandardScaler
+scaler = StandardScaler()
+scaler.fit(X_train)
+X_train_scale = scaler.transform(X_train)
+X_test_scale = scaler.transform(X_test)
+
+# Apply SMOTE to the scaled training data
 smote = SMOTE(random_state=42)
+X_train_smote, y_train_smote = smote.fit_resample(X_train_scale, y_train)
+log_reg = LogisticRegression(C=0.1, class_weight='balanced')
+svm = SVC(C=10, probability=True, class_weight='balanced')
+rf = RandomForestClassifier(max_depth=10, n_estimators=100, class_weight='balanced')
 
-# Apply SMOTE to the training data
-X_train_smote, Y_train_smote = smote.fit_resample(X_train, Y_train)
+# Create a Voting Classifier
+voting_clf = VotingClassifier(estimators=[('lr', log_reg), ('svc', svm), ('rf', rf)], voting='soft',weights=[1,2,1])
+
+# Train the model
+voting_clf.fit(X_train_smote, y_train_smote)
 
 # Calculate accuracies for SVM
 svm_train_predictions = svm_model.predict(X_train_smote)
-svm_train_accuracy = accuracy_score(Y_train_smote, svm_train_predictions)
-svm_test_predictions = svm_model.predict(X_test)
-svm_test_accuracy = accuracy_score(Y_test, svm_test_predictions)
-svm_r = r2_score(Y_test,svm_test_predictions)
+svm_train_accuracy = accuracy_score(y_train_smote, svm_train_predictions)
+svm_test_predictions = svm_model.predict(X_test_scale)
+svm_test_accuracy = accuracy_score(y_test, svm_test_predictions)
+svm_r = r2_score(y_test,svm_test_predictions)
 
 # Calculate accuracies for Logistic Regression
 logistic_train_predictions = logistic_model.predict(X_train_smote)
-logistic_train_accuracy = accuracy_score(Y_train_smote, logistic_train_predictions)
-logistic_test_predictions = logistic_model.predict(X_test)
-logistic_test_accuracy = accuracy_score(Y_test, logistic_test_predictions)
-log_r=r2_score(Y_test,logistic_test_predictions)
+logistic_train_accuracy = accuracy_score(y_train_smote, logistic_train_predictions)
+logistic_test_predictions = logistic_model.predict(X_test_scale)
+logistic_test_accuracy = accuracy_score(y_test, logistic_test_predictions)
+log_r=r2_score(y_test,logistic_test_predictions)
 #calculate accuracies for RandomForest Classifier
 randomforest_train_prediction = ran_cls.predict(X_train_smote)
-randomforest_train_accuracy = accuracy_score(Y_train_smote,randomforest_train_prediction)
-randomforest_test_prediction = ran_cls.predict(X_test)
-randomforest_test_accuracy = accuracy_score(Y_test,randomforest_test_prediction)
-ranf_r=r2_score(Y_test,randomforest_test_prediction)
+randomforest_train_accuracy = accuracy_score(y_train_smote,randomforest_train_prediction)
+randomforest_test_prediction = ran_cls.predict(X_test_scale)
+randomforest_test_accuracy = accuracy_score(y_test,randomforest_test_prediction)
+ranf_r=r2_score(y_test,randomforest_test_prediction)
+
+#calculate for ensemble
+ensemble_train_prediction = voting_clf.predict(X_train_smote)
+ensemble_train_accuracy = accuracy_score(y_train_smote,ensemble_train_prediction)
+ensemble_test_prediction = voting_clf.predict(X_test_scale)
+ensemble_test_accuracy = accuracy_score(y_test,ensemble_test_prediction)
+ens_r=r2_score(y_test,ensemble_test_prediction)
 
 # Page title
 st.title("Smart Disease Prediction System")
 
 # Tab-based navigation
-tab1, tab2 ,tab3= st.tabs(["SVM Model", "Logistic Regression Model","RandomForest Model"])
+tab1, tab2 ,tab3, tab4= st.tabs(["SVM Model", "Logistic Regression Model","RandomForest Model","Ensemble"])
 
 # Initialize a dictionary to store user inputs
 user_input = {}
@@ -149,9 +176,12 @@ with tab1:
     if st.button("Parkinson's Test Result (SVM)"):
         # Prepare the input for the model
         input_values = list(user_input.values())
+        inpt = numpy.asarray(input_values)
+        inpt_reshape = inpt.reshape(1,-1)
+        std_data=scaler.transform(inpt_reshape)
 
         # Make the prediction
-        parkinsons_prediction = svm_model.predict([input_values])
+        parkinsons_prediction = svm_model.predict(std_data)
 
         if parkinsons_prediction[0] == 1:
             parkinsons_diagnosis = "The person has Parkinson's disease"
@@ -178,9 +208,12 @@ with tab2:
     if st.button("Parkinson's Test Result (Logistic Regression)"):
         # Prepare the input for the model
         input_values = list(user_input.values())
+        inpt = numpy.asarray(input_values)
+        inpt_reshape = inpt.reshape(1,-1)
+        std_data=scaler.transform(inpt_reshape)
 
         # Make the prediction
-        parkinsons_prediction = logistic_model.predict([input_values])
+        parkinsons_prediction = logistic_model.predict(std_data)
 
         if parkinsons_prediction[0] == 1:
             parkinsons_diagnosis = "The person has Parkinson's disease"
@@ -205,9 +238,12 @@ with tab3:
     if st.button("Parkinson's Test Result (Randomforest)"):
         # Prepare the input for the model
         input_values = list(user_input.values())
+        inpt = numpy.asarray(input_values)
+        inpt_reshape = inpt.reshape(1,-1)
+        std_data=scaler.transform(inpt_reshape)
 
         # Make the prediction
-        parkinsons_prediction = ran_cls.predict([input_values])
+        parkinsons_prediction = ran_cls.predict(std_data)
 
         if parkinsons_prediction[0] == 1:
             parkinsons_diagnosis = "The person has Parkinson's disease"
@@ -220,6 +256,37 @@ with tab3:
             st.write(f"Training Accuracy: {randomforest_train_accuracy * 100:.3f}%")
             st.write(f"Testing Accuracy: {randomforest_test_accuracy * 100:.3f}%")
             st.write(f"r2 score: {ranf_r :.4f}")
+
+
+        st.success(parkinsons_diagnosis)
+    
+with tab4:
+    st.header("Ensemble Model")
+    #st.write(f"Test Accuracy: {logistic_test_accuracy * 100:.2f}%")
+    get_user_inputs(prefix='ensemble')
+
+    # Code for Prediction
+    if st.button("Parkinson's Test Result (Ensemble)"):
+        # Prepare the input for the model
+        input_values = list(user_input.values())
+        inpt = numpy.asarray(input_values)
+        inpt_reshape = inpt.reshape(1,-1)
+        std_data=scaler.transform(inpt_reshape)
+
+        # Make the prediction
+        parkinsons_prediction = voting_clf.predict(std_data)
+
+        if parkinsons_prediction[0] == 1:
+            parkinsons_diagnosis = "The person has Parkinson's disease"
+            st.write(f"Training Accuracy: {ensemble_train_accuracy * 100:.3f}%")
+            st.write(f"Testing Accuracy: {ensemble_test_accuracy * 100:.3f}%")
+            st.write(f"r2 score: {ens_r :.4f}")
+            
+        else:
+            parkinsons_diagnosis = "The person does not have Parkinson's disease"
+            st.write(f"Training Accuracy: {ensemble_train_accuracy * 100:.3f}%")
+            st.write(f"Testing Accuracy: {ensemble_test_accuracy * 100:.3f}%")
+            st.write(f"r2 score: {ens_r :.4f}")
 
 
         st.success(parkinsons_diagnosis)
